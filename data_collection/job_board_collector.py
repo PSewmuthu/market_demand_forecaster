@@ -145,8 +145,6 @@ def collect_all_jobs():
 
 
 if __name__ == "__main__":
-    import os
-
     PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     SAVE_PATH = f"{PARENT_DIR}/data/raw/job_postings.csv"
 
