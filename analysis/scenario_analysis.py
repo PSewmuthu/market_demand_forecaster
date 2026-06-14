@@ -117,6 +117,9 @@ if __name__ == "__main__":
     PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_RAW = os.path.join(PARENT_DIR, "data", "raw")
     DATA_PROCESSED = os.path.join(PARENT_DIR, "data", "processed")
+    FORECAST_DIR = os.path.join(PARENT_DIR, "data", "processed", "forecasts")
+
+    os.makedirs(FORECAST_DIR, exist_ok=True)
 
     # Expects model/prophet_df/regressors saved from forecasting_models.py run
     # Re-running training here for a standalone demo:
@@ -144,6 +147,6 @@ if __name__ == "__main__":
         model, prophet_df, used_regressors, periods=12)
 
     combined = combine_scenarios_to_df(scenario_results)
-    combined.to_csv(os.path.join(DATA_PROCESSED, "scenario_forecasts.csv"))
+    combined.to_csv(os.path.join(FORECAST_DIR, "scenario_forecasts.csv"))
     logger.info(
-        "Saved scenario forecasts -> data/processed/scenario_forecasts.csv")
+        "Saved scenario forecasts -> data/processed/forecasts/scenario_forecasts.csv")

@@ -162,6 +162,9 @@ if __name__ == "__main__":
     PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_RAW = os.path.join(PARENT_DIR, "data", "raw")
     DATA_PROCESSED = os.path.join(PARENT_DIR, "data", "processed")
+    FORECAST_DIR = os.path.join(PARENT_DIR, "data", "processed", "forecasts")
+
+    os.makedirs(FORECAST_DIR, exist_ok=True)
 
     demand = pd.read_csv(os.path.join(DATA_PROCESSED, "monthly_demand_series.csv"),
                          index_col=0, parse_dates=True)["job_count"]
@@ -179,7 +182,7 @@ if __name__ == "__main__":
         econ = pd.DataFrame()
 
     merged = merge_datasets(demand, trends, econ)
-    merged.to_csv(os.path.join(DATA_PROCESSED, "merged_features.csv"))
+    merged.to_csv(os.path.join(FORECAST_DIR, "merged_features.csv"))
 
     regressor_candidates = [
         c for c in merged.columns if c != "y"][:3]  # limit for demo
@@ -188,7 +191,7 @@ if __name__ == "__main__":
         merged, regressor_cols=regressor_candidates)
     forecast = forecast_prophet(model, prophet_df, used_regressors, periods=12)
     forecast.to_csv(os.path.join(
-        DATA_PROCESSED, "prophet_forecast.csv"), index=False)
+        FORECAST_DIR, "prophet_forecast.csv"), index=False)
     logger.info("Saved Prophet forecast -> data/processed/prophet_forecast.csv")
 
     sarimax_fitted = train_sarimax_model(merged, exog_cols=used_regressors)
@@ -197,5 +200,5 @@ if __name__ == "__main__":
     sarimax_result = pd.concat(
         [sarimax_mean.rename("forecast"), sarimax_ci], axis=1)
     sarimax_result.to_csv(os.path.join(
-        DATA_PROCESSED, "sarimax_forecast.csv"), index=False)
+        FORECAST_DIR, "sarimax_forecast.csv"), index=False)
     logger.info("Saved SARIMAX forecast -> data/processed/sarimax_forecast.csv")
