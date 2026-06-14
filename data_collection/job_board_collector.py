@@ -15,6 +15,18 @@ import logging
 import requests
 import pandas as pd
 
+try:
+    from pathlib import Path
+    from dotenv import load_dotenv
+
+    # .parent goes up one level to the root
+    dotenv_path = Path(__file__).resolve().parent.parent / '.env'
+    # Load the .env file
+    load_dotenv(dotenv_path=dotenv_path)
+except:
+    logging.warning(
+        "Could not load .env file. Make sure it exists and python-dotenv is installed.")
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
