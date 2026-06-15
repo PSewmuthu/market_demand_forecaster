@@ -122,6 +122,8 @@ if __name__ == "__main__":
     DATA_RAW = os.path.join(PARENT_DIR, "data", "raw")
     DATA_PROCESSED = os.path.join(PARENT_DIR, "data", "processed")
 
+    os.makedirs(DATA_PROCESSED, exist_ok=True)
+
     jobs_df = pd.read_csv(os.path.join(DATA_RAW, "job_postings.csv"))
     jobs_df = add_skill_column(jobs_df)
 
