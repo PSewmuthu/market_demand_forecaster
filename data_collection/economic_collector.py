@@ -71,6 +71,8 @@ def collect_economic_indicators(start="2018-01-01"):
 
     # Resample to monthly frequency (forward-fill quarterly/irregular series)
     df = df.resample("ME").ffill()
+    df.index.name = "date"
+
     return df
 
 
