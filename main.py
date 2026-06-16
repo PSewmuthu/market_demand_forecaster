@@ -37,11 +37,13 @@ DATA_RAW = os.path.join(ROOT_DIR, "data", "raw")
 DATA_PROCESSED = os.path.join(ROOT_DIR, "data", "processed")
 FORECASTS_DIR = os.path.join(ROOT_DIR, "predictions", "forecasts")
 VALIDATION_DIR = os.path.join(ROOT_DIR, "predictions", "validation")
+VISUALIZATION_DIR = os.path.join(ROOT_DIR, "visualizations")
 
 os.makedirs(DATA_RAW, exist_ok=True)
 os.makedirs(DATA_PROCESSED, exist_ok=True)
 os.makedirs(FORECASTS_DIR, exist_ok=True)
 os.makedirs(VALIDATION_DIR, exist_ok=True)
+os.makedirs(VISUALIZATION_DIR, exist_ok=True)
 
 
 def step_collect_data(run_pytrends=True, run_jobs=True, run_econ=True):
@@ -309,9 +311,22 @@ def step_validation(merged):
         logger.warning("LSTM backtest skipped: %s", exc)
 
 
+def step_visualize():
+    logger.info("=== STEP 7: Visualizations ===")
+
+    from analysis.visualize import run_all
+
+    run_all(
+        processed_dir=DATA_PROCESSED,
+        predictions_forecasts_dir=FORECASTS_DIR,
+        predictions_validation_dir=VALIDATION_DIR,
+        out_dir=VISUALIZATION_DIR
+    )
+
+
 def main():
     # Toggle steps as needed; data collection can be slow/rate-limited
-    # step_collect_data(run_pytrends=True, run_jobs=True, run_econ=True)
+    step_collect_data(run_pytrends=True, run_jobs=True, run_econ=True)
 
     jobs_df = step_nlp_processing()
     monthly_series = step_seasonality_analysis(jobs_df)
@@ -319,8 +334,10 @@ def main():
         monthly_series)
     step_scenario_analysis(model, prophet_df, used_regressors)
     step_validation(merged)
+    step_visualize()
 
-    logger.info("\n=== Pipeline complete. Outputs in predictions/ ===\n")
+    logger.info(
+        "\n\n=== Pipeline complete. Outputs in data/processed/, predictions/, and visualizations/ ===\n")
 
 
 if __name__ == "__main__":
