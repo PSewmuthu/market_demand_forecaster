@@ -114,38 +114,63 @@ def forecast_prophet(model, prophet_df, regressor_cols, periods=12, freq="ME"):
     return forecast
 
 
-def train_sarimax_model(df, exog_cols=None, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12)):
+def train_sarimax_model(df, exog_cols=None, order=(1, 1, 1), seasonal_order=(0, 1, 1, 12),
+                        maxiter=200):
     """
     Train a SARIMAX model with optional exogenous regressors.
+
+    Exogenous regressors are standardized (zero mean, unit variance) before
+    fitting -- mixing raw-scale regressors (e.g. CPI ~330 vs unemployment ~4)
+    can cause poor optimizer conditioning, non-convergence, and absurdly wide
+    confidence intervals.
     """
 
     exog_cols = exog_cols or []
     y = df["y"]
-    exog = df[exog_cols] if exog_cols else None
+
+    if exog_cols:
+        exog = df[exog_cols].astype(float)
+        exog_std = (exog - exog.mean()) / exog.std().replace(0, 1)
+    else:
+        exog_std = None
 
     model = SARIMAX(
         y,
-        exog=exog,
+        exog=exog_std,
         order=order,
         seasonal_order=seasonal_order,
         enforce_stationarity=False,
         enforce_invertibility=False,
+        concentrate_scale=True,
     )
-    fitted = model.fit(disp=False, maxiter=200, method='powell')
+    fitted = model.fit(disp=False, maxiter=maxiter, method="lbfgs")
+
+    if not fitted.mle_retvals.get("converged", True):
+        logger.warning(
+            "SARIMAX did not fully converge (maxiter=%d). Forecast point estimates "
+            "are usually still reasonable, but confidence intervals may be unreliable. "
+            "Consider a simpler seasonal_order or more data.",
+            maxiter,
+        )
+
+    # Stash scaling params so forecast_sarimax can standardize future exog consistently
+    fitted._exog_mean = exog.mean() if exog_cols else None
+    fitted._exog_std = exog.std().replace(0, 1) if exog_cols else None
 
     return fitted
 
 
 def forecast_sarimax(fitted_model, df, exog_cols=None, periods=12):
-    """Forecast future periods, carrying forward last exogenous values."""
-
+    """Forecast future periods, carrying forward last exogenous values
+    (standardized using the same mean/std as training)."""
     exog_cols = exog_cols or []
 
     if exog_cols:
-        last_row = df[exog_cols].iloc[-1]
-        future_exog = pd.DataFrame(
-            [last_row.values] * periods, columns=exog_cols
-        )
+        last_row = df[exog_cols].astype(float).iloc[-1]
+        future_raw = pd.DataFrame(
+            [last_row.values] * periods, columns=exog_cols)
+        future_exog = (future_raw - fitted_model._exog_mean) / \
+            fitted_model._exog_std
     else:
         future_exog = None
 
@@ -162,30 +187,47 @@ if __name__ == "__main__":
     PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_RAW = os.path.join(PARENT_DIR, "data", "raw")
     DATA_PROCESSED = os.path.join(PARENT_DIR, "data", "processed")
-    FORECAST_DIR = os.path.join(PARENT_DIR, "data", "processed", "forecasts")
+    FORECAST_DIR = os.path.join(PARENT_DIR, "predictions", "forecasts")
 
     os.makedirs(FORECAST_DIR, exist_ok=True)
 
     demand = pd.read_csv(os.path.join(DATA_PROCESSED, "monthly_demand_series.csv"),
-                         index_col=0, parse_dates=True)["job_count"]
+                         index_col=0, parse_dates=True)["y"]
 
     try:
-        trends = pd.read_csv(os.path.join(DATA_RAW, "trends_roles.csv"),
-                             index_col=0, parse_dates=True)
+        roles = pd.read_csv(os.path.join(DATA_RAW, "trends_roles.csv"),
+                            index_col=0, parse_dates=True)
+        roles_signal = roles.mean(axis=1).rename(
+            "roles_trend").resample("ME").mean()
     except FileNotFoundError:
-        trends = pd.DataFrame()
+        roles_signal = pd.Series(dtype=float, name="roles_trend")
+
+    try:
+        skills = pd.read_csv(os.path.join(DATA_RAW, "trends_skills.csv"),
+                             index_col=0, parse_dates=True)
+        skills_signal = skills.mean(axis=1).rename(
+            "skills_trend").resample("ME").mean()
+    except FileNotFoundError:
+        skills_signal = pd.Series(dtype=float, name="skills_trend")
+
+    trends = pd.concat([roles_signal, skills_signal], axis=1).dropna(how="all")
 
     try:
         econ = pd.read_csv(os.path.join(DATA_RAW, "economic_indicators.csv"),
                            index_col=0, parse_dates=True)
-    except FileNotFoundError:
+        if not isinstance(econ.index, pd.DatetimeIndex) or econ.index.isna().all():
+            raise ValueError(
+                "economic_indicators.csv has no usable date index")
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning(
+            "Economic indicators unavailable or missing date index: %s", exc)
         econ = pd.DataFrame()
 
     merged = merge_datasets(demand, trends, econ)
-    merged.to_csv(os.path.join(FORECAST_DIR, "merged_features.csv"))
+    merged.to_csv(os.path.join(DATA_PROCESSED, "merged_features.csv"))
 
     regressor_candidates = [
-        c for c in merged.columns if c != "y"][:3]  # limit for demo
+        c for c in merged.columns if c != "y"][:5]  # limit for demo
 
     model, prophet_df, used_regressors = train_prophet_model(
         merged, regressor_cols=regressor_candidates)

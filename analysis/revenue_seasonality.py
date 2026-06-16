@@ -15,20 +15,6 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-def build_monthly_series(jobs_df, date_col="created"):
-    """Aggregate job postings into a monthly count series ('demand proxy')."""
-
-    df = jobs_df.copy()
-    df[date_col] = pd.to_datetime(
-        df[date_col], errors="coerce", utc=True).dt.tz_localize(None)
-    df = df.dropna(subset=[date_col])
-
-    monthly = df.set_index(date_col).resample("ME").size()
-    monthly.name = "job_count"
-
-    return monthly
-
-
 def decompose_series(series, period=12, model="additive", method="classical"):
     """
     Decompose a time series into trend, seasonal, and residual components.
@@ -79,8 +65,9 @@ if __name__ == "__main__":
     PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_PROCESSED = os.path.join(PARENT_DIR, "data", "processed")
 
-    jobs_df = pd.read_csv(os.path.join(DATA_PROCESSED, "jobs_with_skills.csv"))
-    monthly_series = build_monthly_series(jobs_df)
+    monthly_series = pd.read_csv(
+        os.path.join(DATA_PROCESSED, "monthly_demand_series.csv"), index_col=0, parse_dates=True
+    )["y"]
 
     if len(monthly_series) >= 24:
         result = decompose_series(
@@ -98,6 +85,4 @@ if __name__ == "__main__":
             len(monthly_series),
         )
 
-    monthly_series.to_csv(os.path.join(
-        DATA_PROCESSED, "monthly_demand_series.csv"))
     logger.info("Saved monthly demand series.")

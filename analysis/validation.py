@@ -85,7 +85,7 @@ def backtest_prophet(merged_df, regressor_cols, holdout_periods=12,
 
 
 def backtest_sarimax(merged_df, exog_cols, holdout_periods=12,
-                     order=(1, 1, 1), seasonal_order=(1, 1, 1, 12)):
+                     order=(1, 1, 1), seasonal_order=(0, 1, 1, 12)):
     """Train SARIMAX on train split, forecast holdout, compute metrics."""
 
     from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -100,14 +100,21 @@ def backtest_sarimax(merged_df, exog_cols, holdout_periods=12,
     train = merged_df.iloc[:-holdout_periods]
     test = merged_df.iloc[-holdout_periods:]
 
-    exog_train = train[exog_cols] if exog_cols else None
-    exog_test = test[exog_cols] if exog_cols else None
+    if exog_cols:
+        exog_train_raw = train[exog_cols].astype(float)
+        exog_mean = exog_train_raw.mean()
+        exog_std = exog_train_raw.std().replace(0, 1)
+        exog_train = (exog_train_raw - exog_mean) / exog_std
+        exog_test = (test[exog_cols].astype(float) - exog_mean) / exog_std
+    else:
+        exog_train = None
+        exog_test = None
 
     model = SARIMAX(
         train["y"], exog=exog_train, order=order, seasonal_order=seasonal_order,
-        enforce_stationarity=False, enforce_invertibility=False,
+        enforce_stationarity=False, enforce_invertibility=False, concentrate_scale=True,
     )
-    fitted = model.fit(disp=False)
+    fitted = model.fit(disp=False, maxiter=200, method="lbfgs")
 
     forecast = fitted.get_forecast(steps=holdout_periods, exog=exog_test)
     predicted = forecast.predicted_mean.values
@@ -128,14 +135,15 @@ if __name__ == "__main__":
     import os
 
     PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    FORECAST_DIR = os.path.join(PARENT_DIR, "data", "processed", "forecasts")
+    DATA_PROCESSED = os.path.join(PARENT_DIR, "data", "processed")
+    FORECAST_DIR = os.path.join(PARENT_DIR, "predictions", "forecasts")
     VALIDATION_DIR = os.path.join(
-        PARENT_DIR, "data", "processed", "validation")
+        PARENT_DIR, "predictions", "validation")
 
     os.makedirs(VALIDATION_DIR, exist_ok=True)
 
     merged = pd.read_csv(
-        os.path.join(FORECAST_DIR, "merged_features.csv"), index_col=0, parse_dates=True)
+        os.path.join(DATA_PROCESSED, "merged_features.csv"), index_col=0, parse_dates=True)
     regressor_cols = [c for c in merged.columns if c != "y"][:3]
 
     prophet_metrics, prophet_results = backtest_prophet(
